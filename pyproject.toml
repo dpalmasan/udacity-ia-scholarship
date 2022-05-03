@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "udacity-ia-scholarship"
+version = "0.1.0"
+description = "For the udacity AI scholarship"
+authors = ["dpalmasan <dpalmasan@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.27.1"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
