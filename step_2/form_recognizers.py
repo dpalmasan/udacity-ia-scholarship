@@ -3,20 +3,17 @@ from abc import ABC
 import time
 
 
-class Recognizer(ABC):
-    key = ""
+class Recognizer:
+    def __init__(
+        self, ocp_api_key, model="prebuilt-idDocument", key="udacityformrecognizer"
+    ):
+        self.key = key
+        self.ocp_api_key = ocp_api_key
+        self.__model = model
 
     @property
     def endpoint(self):
         return f"https://{self.key}.cognitiveservices.azure.com"
-
-
-class IdentificationRecognizer(Recognizer):
-    __model = "prebuilt-idDocument"
-
-    def __init__(self, ocp_api_key, key="udacityformrecognizer"):
-        self.key = key
-        self.ocp_api_key = ocp_api_key
 
     def analyze(self, image_url: str) -> str:
         headers = {
@@ -51,12 +48,14 @@ class IdentificationRecognizer(Recognizer):
 
 
 if __name__ == "__main__":
-    image_url = (
+    resource = (
         "https://dpalmastorage.blob.core.windows.net/udacity-data/ca-dl-diogo.png"
     )
-    # image_url = "https://raw.githubusercontent.com/Azure-Samples/cognitive-services-REST-api-samples/master/curl/form-recognizer/rest-api/identity_documents.png"
+    model = "prebuilt-idDocument"
     import os
 
-    recognizer = IdentificationRecognizer(os.getenv("API_KEY"))
-    operation_location = recognizer.analyze(image_url)
+    resource = "https://dpalmastorage.blob.core.windows.net/udacity-data/boarding_pass_clynton.pdf"
+    model = "boarding_ten_samples"
+    recognizer = Recognizer(os.getenv("API_KEY"), model=model)
+    operation_location = recognizer.analyze(resource)
     print(recognizer.result(operation_location))
