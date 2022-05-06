@@ -1,11 +1,18 @@
+import logging
 import requests
-from abc import ABC
 import time
+
+FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
+logging.basicConfig(format=FORMAT, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Recognizer:
     def __init__(
-        self, ocp_api_key, model="prebuilt-idDocument", key="udacityformrecognizer"
+        self,
+        ocp_api_key,
+        model="prebuilt-idDocument",
+        key="udacityformrecognizer",
     ):
         self.key = key
         self.ocp_api_key = ocp_api_key
@@ -20,7 +27,6 @@ class Recognizer:
             "Content-Type": "application/json",
             "Ocp-Apim-Subscription-Key": self.ocp_api_key,
         }
-
         data = {"urlSource": image_url}
 
         url = (
@@ -29,7 +35,11 @@ class Recognizer:
         )
 
         result = requests.post(url, json=data, headers=headers)
-        result.raise_for_status()
+        try:
+            result.raise_for_status()
+        except requests.HTTPError:
+            logger.error(result.content)
+            raise
         return result.headers["Operation-location"]
 
     def result(self, operation_location: str):
@@ -37,7 +47,11 @@ class Recognizer:
             "Ocp-Apim-Subscription-Key": self.ocp_api_key,
         }
         result = requests.get(operation_location, headers=headers)
-        result.raise_for_status()
+        try:
+            result.raise_for_status()
+        except requests.HTTPError:
+            logger.error(result.content)
+            raise
         result_data = result.json()
         while result_data["status"] != "succeeded":
             time.sleep(1)
@@ -45,17 +59,3 @@ class Recognizer:
             result.raise_for_status()
             result_data = result.json()
         return result_data
-
-
-if __name__ == "__main__":
-    resource = (
-        "https://dpalmastorage.blob.core.windows.net/udacity-data/ca-dl-diogo.png"
-    )
-    model = "prebuilt-idDocument"
-    import os
-
-    resource = "https://dpalmastorage.blob.core.windows.net/udacity-data/boarding_pass_clynton.pdf"
-    model = "boarding_ten_samples"
-    recognizer = Recognizer(os.getenv("API_KEY"), model=model)
-    operation_location = recognizer.analyze(resource)
-    print(recognizer.result(operation_location))
