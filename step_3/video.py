@@ -10,10 +10,13 @@ from pathlib import Path
 from azure.cognitiveservices.vision.face import FaceClient
 from azure.cognitiveservices.vision.face.models import TrainingStatusType
 
+from utils import config, get_log_level
+
 
 FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT, level=logging.INFO)
+logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
+logger.setLevel(get_log_level(config.log_level))
 
 
 def upload_video(indexer: VideoIndexer) -> str:
@@ -57,10 +60,10 @@ def build_person_group(
     path: Path,
     prefix="human-face",
 ):
-    logger.info("Create and build a person group...")
+    logger.debug("Create and build a person group...")
     # Create empty Person Group. Person Group ID must be lower case,
     # alphanumeric, and/or with '-', '_'.
-    logger.info("Person group ID:", person_group_id)
+    logger.debug(f"Person group ID: {person_group_id}")
     client.person_group.create(
         person_group_id=person_group_id, name=person_group_id
     )
@@ -89,7 +92,7 @@ def build_person_group(
         training_status = client.person_group.get_training_status(
             person_group_id
         )
-        logger.info("Training status: {}.".format(training_status.status))
+        logger.debug("Training status: {}.".format(training_status.status))
         if training_status.status is TrainingStatusType.succeeded:
             break
         elif training_status.status is TrainingStatusType.failed:
@@ -99,16 +102,24 @@ def build_person_group(
 
 
 def detect_faces(client: FaceClient, query_images_list):
-    logger.info("Detecting faces in query images list...")
+    logger.debug("Detecting faces in query images list...")
 
     face_ids = {}
     for image_path in query_images_list:
         image = open(image_path, "rb")
-        logger.info("Opening image: %s", image_path.stem)
+        logger.debug("Opening image: %s", image_path.stem)
 
         # Detect the faces in the query images list one at a time,
         # returns list[DetectedFace]
-        faces = client.face.detect_with_stream(image)
+        try:
+            faces = client.face.detect_with_stream(image)
+        except Exception as e:
+            if config.is_free_tier:
+                logger.debug(f"{e}, will try to wait a minute")
+                time.sleep(60)
+                faces = client.face.detect_with_stream(image)
+            else:
+                raise
 
         # Add all detected face IDs to a list
         for face in faces:

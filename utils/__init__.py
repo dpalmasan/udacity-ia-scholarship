@@ -1,5 +1,23 @@
+import logging
 import yaml
 from dataclasses import dataclass
+
+_LOG_LEVEL_MAPPING = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARN,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+}
+
+
+def get_log_level(level: str) -> str:
+    try:
+        return _LOG_LEVEL_MAPPING[level]
+    except KeyError:
+        raise KeyError(
+            f"Invalid log level, choose one of {_LOG_LEVEL_MAPPING.keys()}"
+        )
 
 
 @dataclass
@@ -14,6 +32,8 @@ class Config:
     prediction_key: str
     project_id: str
     publish_iteration_name: str
+    log_level: str
+    is_free_tier: bool
 
 
 with open("config.yaml", "r") as fp:

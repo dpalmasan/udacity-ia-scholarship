@@ -7,3 +7,5 @@ endpoint: "ENTER PREDICTION ENDPOINT HERE"
 prediction_key: "ENTER PREDICTION KEY HERE"
 project_id: "YOUR PROJECT ID"
 publish_iteration_name: "YOUR ITERATION NAME"
+log_level: "debug"
+is_free_tier: true
