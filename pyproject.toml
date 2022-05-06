@@ -12,6 +12,8 @@ Pillow = "^9.1.0"
 video-indexer = "^0.1.8"
 azure-cognitiveservices-vision-face = "^0.6.0"
 PyYAML = "^6.0"
+azure-cognitiveservices-vision-customvision = "^3.1.0"
+matplotlib = "^3.5.2"
 
 [tool.poetry.dev-dependencies]
 black = "^22.3.0"
