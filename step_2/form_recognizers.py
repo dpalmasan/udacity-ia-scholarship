@@ -2,9 +2,12 @@ import logging
 import requests
 import time
 
+from utils import config, get_log_level
+
 FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT, level=logging.INFO)
+logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
+logger.setLevel(get_log_level(config.log_level))
 
 
 class Recognizer:
