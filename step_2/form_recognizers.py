@@ -1,13 +1,9 @@
-import logging
 import requests
 import time
 
-from utils import config, get_log_level
+from utils import config, get_logger
 
-FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT)
-logger = logging.getLogger(__name__)
-logger.setLevel(get_log_level(config.log_level))
+logger = get_logger(__name__, config.log_level)
 
 
 class Recognizer:
@@ -56,7 +52,7 @@ class Recognizer:
         result = requests.get(operation_location, headers=headers)
         try:
             result.raise_for_status()
-        except requests.HTTPError:
+        except requests.HTTPError as e:
             if config.is_free_tier:
                 logger.debug(f"{e}, will try to wait a minute")
                 time.sleep(60)

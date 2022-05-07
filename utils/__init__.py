@@ -20,6 +20,16 @@ def get_log_level(level: str) -> str:
         )
 
 
+FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
+logging.basicConfig(format=FORMAT)
+
+
+def get_logger(logger_name, log_level):
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(get_log_level(log_level))
+    return logger
+
+
 @dataclass
 class Config:
     form_recognizer_api_key: str

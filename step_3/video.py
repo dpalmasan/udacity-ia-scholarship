@@ -1,6 +1,5 @@
 import glob
 import io
-import logging
 import sys
 import time
 import os
@@ -10,13 +9,9 @@ from pathlib import Path
 from azure.cognitiveservices.vision.face import FaceClient
 from azure.cognitiveservices.vision.face.models import TrainingStatusType
 
-from utils import config, get_log_level
+from utils import config, get_logger
 
-
-FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT)
-logger = logging.getLogger(__name__)
-logger.setLevel(get_log_level(config.log_level))
+logger = get_logger(__name__, config.log_level)
 
 
 def upload_video(indexer: VideoIndexer) -> str:

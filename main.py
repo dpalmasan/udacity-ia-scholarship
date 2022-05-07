@@ -14,7 +14,7 @@ from step_3.video import (
     save_images,
 )
 from step_4.lighter_detector import predict
-from utils import config, get_log_level
+from utils import config, get_logger
 from video_indexer import VideoIndexer
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
@@ -26,10 +26,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT)
-logger = logging.getLogger(__name__)
-logger.setLevel(get_log_level(config.log_level))
+logger = get_logger(__name__, config.log_level)
 
 
 ID_PATH = Path("/mnt/c/Users/dpalma/Desktop/ids")
@@ -218,6 +215,7 @@ def load_manifest_data(
         for row, passenger in zip(reader, passenger_order):
             result[passenger] = row
 
+    logger.debug(f"Manifest data: {result}")
     return result
 
 
@@ -254,6 +252,7 @@ def get_form_info(
     person_id_doc: str,
     person_boarding_pass: str,
 ):
+    logger.debug(f"Will process {person_id_doc} {person_boarding_pass}")
     resource = f"{BLOB_STORAGE_URL}/{person_id_doc}"
     op_location = id_doc_model.analyze(resource)
     id_info = id_doc_model.result(op_location)
@@ -282,6 +281,8 @@ def get_form_info(
                 else process_boarding_value(field, value["valueString"])
             )
 
+    logger.debug(f"Id document info: {id_relevant_info}")
+    logger.debug(f"Boarding pass info: {boarding_pass_relevant_info}")
     return id_relevant_info, boarding_pass_relevant_info
 
 
@@ -461,6 +462,7 @@ def main():
         )
 
         validation.validate_text_data(passenger, id_info, bp_info)
+        return
         validation.validate_person(
             face_client, ID_PATH, passenger, person_id_doc, video_ids, 0.65
         )
