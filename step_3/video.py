@@ -79,9 +79,19 @@ def build_person_group(
     # Add images to a Person object
     for image_p in human_face_images:
         with open(image_p, "rb") as w:
-            client.person_group_person.add_face_from_stream(
-                person_group_id, human_person.person_id, w
-            )
+            try:
+                client.person_group_person.add_face_from_stream(
+                    person_group_id, human_person.person_id, w
+                )
+            except Exception as e:
+                if config.is_free_tier:
+                    logger.debug(f"{e}, will try to wait a minute")
+                    time.sleep(60)
+                    client.person_group_person.add_face_from_stream(
+                        person_group_id, human_person.person_id, w
+                    )
+                else:
+                    raise
 
     # Train the person group, after a Person object with many images
     # were added to it.

@@ -34,6 +34,7 @@ class Config:
     publish_iteration_name: str
     log_level: str
     is_free_tier: bool
+    show_lighter_detection: bool
 
 
 with open("config.yaml", "r") as fp:

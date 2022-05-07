@@ -1,0 +1,6 @@
+Flight No,Origin,Destination,Date,Time,First Name,Last Name,Sex,SeatNo,DateOfBirth,DoBValidation,PersonValidation,LuggageValidation,NameValidation,BoardingPassValidation
+LA-21,Santiago,Concepción,10 April 2022,11:00,Diogo Andrés,Puelma,M,3A,17 January 1990,TRUE,TRUE,TRUE,TRUE,TRUE
+SKY70,Concepción,Vallenar,21 March 2022,14:00,Manuel Ignacio,Gaete,M,20C,3 March 1989,TRUE,FALSE,FALSE,TRUE,TRUE
+Jet3,Temuco,Puerto Montt,25 February 2022,8:00,Clynton Augusto,Tomacheski,M,35B,6 May 1992,TRUE,FALSE,FALSE,TRUE,TRUE
+LA-21,Concepción,Santiago,12 April 2022,8:00,Norma Alejandra,Vásquez,F,10F,5 September 1987,TRUE,FALSE,FALSE,TRUE,TRUE
+LA-23,Arica,Punta Arenas,18 December 2022,17:00,Javiera Alejandra,Strogonoff,F,20E,15 November 1994,TRUE,FALSE,TRUE,TRUE,TRUE

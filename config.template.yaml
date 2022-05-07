@@ -9,3 +9,4 @@ project_id: "YOUR PROJECT ID"
 publish_iteration_name: "YOUR ITERATION NAME"
 log_level: "debug"
 is_free_tier: true
+show_lighter_detection: false

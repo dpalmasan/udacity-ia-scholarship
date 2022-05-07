@@ -2,6 +2,7 @@ import csv
 import datetime
 import logging
 from pathlib import Path
+import time
 from typing import Dict, List
 import uuid
 
@@ -13,7 +14,7 @@ from step_3.video import (
     save_images,
 )
 from step_4.lighter_detector import predict
-from utils import config
+from utils import config, get_log_level
 from video_indexer import VideoIndexer
 from azure.cognitiveservices.vision.face import FaceClient
 from msrest.authentication import CognitiveServicesCredentials
@@ -26,13 +27,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 FORMAT = "%(asctime)s %(module)s  %(levelname)s %(message)s"
-logging.basicConfig(format=FORMAT, level=logging.INFO)
+logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
+logger.setLevel(get_log_level(config.log_level))
 
 
 ID_PATH = Path("/mnt/c/Users/dpalma/Desktop/ids")
 BLOB_STORAGE_URL = "https://dpalmastorage.blob.core.windows.net/udacity-data"
 MANIFEST_ROOT = Path("manifest_table")
+VIDEO_ID = "89fe0aeb73"
 
 MANIFEST_MAPPINGS = {
     "FirstName": "First Name",
@@ -51,47 +54,123 @@ MANIFEST_MAPPINGS = {
 
 
 class Validation:
-    def __init__(self, id_info, bp_info, manifest_data):
-        self.id_info = dict(id_info)
-        self.bp_info = dict(bp_info)
+    def __init__(self, manifest_data):
         self.manifest_data = {
             key: dict(data) for key, data in manifest_data.items()
         }
 
-    def validate_text_data(self, passenger):
+    def validate_text_data(self, passenger, id_info, bp_info):
         # Considering that in some cases a person might have two names
         # In the ID
         name_validation = (
             self.manifest_data[passenger]["First Name"].split()[0]
-            == self.bp_info["First Name"].split()[0]
-            == self.id_info["First Name"].split()[0]
+            == bp_info["First Name"].split()[0]
+            == id_info["First Name"].split()[0]
         )
 
         if name_validation:
             self.manifest_data[passenger]["NameValidation"] = "TRUE"
 
-        dob_validation = self.id_info["DateOfBirth"] == canonicalize_dob(
+        dob_validation = id_info["DateOfBirth"] == canonicalize_dob(
             self.manifest_data[passenger]["DateOfBirth"]
         )
         if dob_validation:
             self.manifest_data[passenger]["DoBValidation"] = "TRUE"
 
         bp_validation = (
-            self.manifest_data[passenger]["Flight No"]
-            == self.bp_info["Flight No"]
-            and self.manifest_data[passenger]["Origin"]
-            == self.bp_info["Origin"]
+            self.manifest_data[passenger]["Flight No"] == bp_info["Flight No"]
+            and self.manifest_data[passenger]["Origin"] == bp_info["Origin"]
             and self.manifest_data[passenger]["Destination"]
-            == self.bp_info["Destination"]
-            and self.bp_info["Date"] == self.manifest_data[passenger]["Date"]
-            and self.bp_info["Time"] == self.manifest_data[passenger]["Time"]
-            and self.bp_info["Time"] == self.manifest_data[passenger]["Time"]
-            and self.bp_info["SeatNo"]
-            == self.manifest_data[passenger]["SeatNo"]
+            == bp_info["Destination"]
+            and bp_info["Date"] == self.manifest_data[passenger]["Date"]
+            and bp_info["Time"]
+            == datetime.datetime.strptime(
+                self.manifest_data[passenger]["Time"], "%H:%M"
+            ).strftime("%H:%M")
+            and bp_info["SeatNo"] == self.manifest_data[passenger]["SeatNo"]
+        )
+        logger.debug(
+            "BP Validation:\n"
+            "{}, {}\n".format(
+                self.manifest_data[passenger]["Flight No"],
+                bp_info["Flight No"],
+            )
+        )
+        logger.debug(
+            "{}, {}\n".format(
+                self.manifest_data[passenger]["Origin"], bp_info["Origin"]
+            )
+        )
+        logger.debug(
+            "{}, {}\n".format(
+                self.manifest_data[passenger]["Destination"],
+                bp_info["Destination"],
+            )
+        )
+        logger.debug(
+            "{}, {}\n".format(
+                self.manifest_data[passenger]["Date"], bp_info["Date"]
+            )
+        )
+        logger.debug(
+            "{}, {}\n".format(
+                datetime.datetime.strptime(
+                    self.manifest_data[passenger]["Time"], "%H:%M"
+                ).strftime("%H:%M"),
+                bp_info["Time"],
+            )
+        )
+        logger.debug(
+            "{}, {}\n".format(
+                self.manifest_data[passenger]["SeatNo"], bp_info["SeatNo"]
+            )
         )
 
         if bp_validation:
             self.manifest_data[passenger]["BoardingPassValidation"] = "TRUE"
+
+    def validate_person(
+        self,
+        face_client: FaceClient,
+        id_path: Path,
+        passenger: str,
+        person_id_doc: str,
+        video_ids,
+        confidence_threshold: str = 0.65,
+    ):
+
+        image_path = id_path / person_id_doc
+        logger.debug("Reading image {image_path}")
+        with open(image_path, "rb") as img:
+            try:
+                dl_faces = face_client.face.detect_with_stream(img)
+            except Exception as e:
+                if config.is_free_tier:
+                    logger.debug(f"{e} Free tier, will wait a minute")
+                    time.sleep(60)
+                    dl_faces = face_client.face.detect_with_stream(img)
+                else:
+                    raise
+
+        for face in dl_faces:
+            dl_id = face.face_id
+
+        try:
+            dl_verify_result = face_client.face.verify_face_to_face(
+                video_ids["human-face4"], dl_id
+            )
+        except Exception as e:
+            if config.is_free_tier:
+                logger.debug(f"{e} Free tier, will wait a minute")
+                time.sleep(60)
+                dl_verify_result = face_client.face.verify_face_to_face(
+                    video_ids["human-face4"], dl_id
+                )
+            else:
+                raise
+        logger.debug(f"Face to Face confidence {dl_verify_result.confidence}")
+        if dl_verify_result.confidence >= confidence_threshold:
+            self.manifest_data[passenger]["PersonValidation"] = "TRUE"
 
 
 def canonicalize_dob(date_str: str) -> str:
@@ -169,7 +248,7 @@ def write_manifest_data(
             writer.writerow(data[passenger])
 
 
-def step_2(
+def get_form_info(
     id_doc_model: Recognizer,
     boarding_pass_model: Recognizer,
     person_id_doc: str,
@@ -206,142 +285,202 @@ def step_2(
     return id_relevant_info, boarding_pass_relevant_info
 
 
-def step_3():
-    video_id = "89fe0aeb73"
+def has_lighter_in_lugage(
+    predictor: CustomVisionPredictionClient,
+    image_path: Path,
+    show_lighter_detection: bool = False,
+    threshold: float = 0.95,
+):
+    results = predict(
+        predictor, image_path, config.project_id, config.publish_iteration_name
+    )
+
+    if show_lighter_detection:
+        with open(image_path, "rb") as img_code:
+            img_view_ready = Image.open(img_code)
+            _, ax = plt.subplots()
+            ax.imshow(img_view_ready)
+
+    found_lighter = False
+    for prediction in results.predictions:
+        logger.debug(
+            f"{prediction.tag_name}"
+            ": {0:.2f}%".format(prediction.probability * 100)
+        )
+        found_lighter = prediction.probability > threshold or found_lighter
+        if found_lighter and show_lighter_detection:
+            bbox = prediction.bounding_box
+            rect = patches.Rectangle(
+                (
+                    bbox.left * img_view_ready.width,
+                    (1 - bbox.top) * img_view_ready.height,
+                ),
+                bbox.width * img_view_ready.width,
+                -bbox.height * img_view_ready.height,
+                linewidth=1,
+                edgecolor="r",
+                facecolor="none",
+            )
+            ax.add_patch(rect)
+    return found_lighter
+
+
+def display_kiosk_messages(passenger_manifest):
+    receiver = "Sir/Madam"
+    if (
+        passenger_manifest["NameValidation"] == "TRUE"
+        and passenger_manifest["BoardingPassValidation"] == "TRUE"
+    ):
+        prefix = "Mr" if passenger_manifest["Sex"] == "M" else "Ms"
+        full_name = "{} {}".format(
+            passenger_manifest["First Name"], passenger_manifest["Last Name"]
+        )
+        receiver = f"{prefix}. {full_name}"
+
+    print(f"Dear {receiver},")
+    if (
+        passenger_manifest["NameValidation"] == "FALSE"
+        or passenger_manifest["DoBValidation"] == "FALSE"
+    ):
+        print(
+            "Some of the information on your ID card does not match "
+            "the flight manifest data, so you cannot board the plane.\n"
+            "Please see a customer service representative."
+        )
+        return
+
+    if passenger_manifest["BoardingPassValidation"] == "FALSE":
+        print(
+            "Some of the information on your boarding pass does not match "
+            "the flight manifest data, so you cannot board the plane.\n"
+            "Please see a customer service representative."
+        )
+        return
+
+    flight_number = passenger_manifest["Flight No"]
+    time = passenger_manifest["Time"]
+    origin = passenger_manifest["Origin"]
+    destination = passenger_manifest["Destination"]
+    seat = passenger_manifest["SeatNo"]
+    print(
+        f"You are welcome to the flight # {flight_number} "
+        f"leaving at {time} from {origin} to {destination}.\n"
+        f"Your seat number is {seat}, and it is confirmed"
+    )
+    if passenger_manifest["LuggageValidation"] == "TRUE":
+        print(
+            "We did not find a prohibited item (lighter) in your carry-on "
+            "baggage.\nThanks for following the procedure."
+        )
+    else:
+        print(
+            "We have found a prohibited item in your carry-on baggage, and "
+            "it is flagged for removal.\n"
+        )
+
+    if (
+        passenger_manifest["PersonValidation"] == "TRUE"
+        and passenger_manifest["LuggageValidation"] == "FALSE"
+    ):
+        print(
+            "Your identity is verified. However, your baggage verification "
+            "failed, so please see a customer service representative."
+        )
+
+    elif passenger_manifest["PersonValidation"] == "FALSE":
+        print(
+            "Your identity could not be verified. "
+            "Please see a customer service representative."
+        )
+    else:
+        print("Your identity is verified so please board the plane.")
+
+
+def main():
+    # Form recognizer models
+    id_doc_model = Recognizer(
+        config.form_recognizer_api_key, model="prebuilt-idDocument"
+    )
+    boarding_pass_model = Recognizer(
+        config.form_recognizer_api_key, model="boarding_ten_samples"
+    )
+
+    # Video-indexer service
     indexer = VideoIndexer(
         vi_subscription_key=config.vi_subscription_key,
         vi_location="trial",
         vi_account_id=config.vi_account_id,
     )
-    images, info = get_image_thumbnails(indexer, video_id)
+
+    images, info = get_image_thumbnails(indexer, VIDEO_ID)
     save_images(ID_PATH, images)
 
+    # Face Recognition service
     service_endpoint = config.face_service_endpoint
     service_key = config.face_service_key
     face_client = FaceClient(
         service_endpoint, CognitiveServicesCredentials(service_key)
     )
 
-    PERSON_GROUP_ID = str(uuid.uuid4())
+    video_ids = detect_faces(face_client, [ID_PATH / "human-face4.jpg"])
+
+    person_group_id = str(uuid.uuid4())
     person_group_name = "person-dpalma"
     build_person_group(
-        face_client, PERSON_GROUP_ID, person_group_name, ID_PATH
+        face_client, person_group_id, person_group_name, ID_PATH
     )
-    logger.info(info["summarizedInsights"]["sentiments"])
-    logger.info(info["summarizedInsights"]["emotions"])
+    logger.debug(info["summarizedInsights"]["sentiments"])
+    logger.debug(info["summarizedInsights"]["emotions"])
 
-    video_ids = detect_faces(face_client, ID_PATH.glob("human-face*.jpg"))
-    dl_ids = {}
-    for image_path in ID_PATH.glob("ca-dl*.png"):
-        with open(image_path, "rb") as img:
-            dl_faces = face_client.face.detect_with_stream(img)
-
-        for face in dl_faces:
-            dl_ids[image_path.stem] = face.face_id
-
-    logger.info(dl_ids)
-
-    for name, dl_id in dl_ids.items():
-        dl_verify_result = face_client.face.verify_face_to_face(
-            video_ids["human-face4"], dl_id
-        )
-        logger.info(f"Comparing human-face4 to {name}")
-        if dl_verify_result.is_identical:
-            logger.info(
-                "Faces are of the same (Positive) person, "
-                f"similarity confidence: {dl_verify_result.confidence}."
-            )
-        else:
-            logger.info(
-                "Faces are of different (Negative) persons, "
-                f"similarity confidence: {dl_verify_result.confidence}."
-            )
-
-
-def step_4():
+    # Custom Vision service
     prediction_credentials = ApiKeyCredentials(
         in_headers={"Prediction-key": config.prediction_key}
     )
     predictor = CustomVisionPredictionClient(
         config.endpoint, prediction_credentials
     )
-    image_dir = ID_PATH / "lighter_test_images"
 
-    for image_path in image_dir.glob("*.jpg"):
-        results = predict(
-            predictor,
-            image_path,
-            config.project_id,
-            config.publish_iteration_name,
+    # Preparing manifest data
+    input_manifest_path = MANIFEST_ROOT / "manifest.csv"
+    output_manifest_path = MANIFEST_ROOT / "manifest_validated.csv"
+    passenger_order = ["diogo", "manuel", "clynton", "norma", "javiera"]
+    manifest_data = load_manifest_data(input_manifest_path, passenger_order)
+    validation = Validation(manifest_data)
+
+    # Images to be passed to Object Detection model
+    images = (ID_PATH / "lighter_test_images").glob("lighter_test*.jpg")
+
+    for passenger, image_path in zip(passenger_order, images):
+        person_id_doc = f"ca-dl-{passenger}.png"
+        person_boarding_pass = f"boarding_pass_{passenger}.pdf"
+        id_info, bp_info = get_form_info(
+            id_doc_model,
+            boarding_pass_model,
+            person_id_doc,
+            person_boarding_pass,
         )
 
-        logger.info(results.predictions)
-        with open(image_path, "rb") as img_code:
-            img_view_ready = Image.open(img_code)
-            _, ax = plt.subplots()
-            ax.imshow(img_view_ready)
-            for prediction in results.predictions:
-                logger.info(
-                    f"{prediction.tag_name}"
-                    ": {0:.2f}%".format(prediction.probability * 100)
-                )
-                if prediction.probability > 0.8:
-                    bbox = prediction.bounding_box
-                    rect = patches.Rectangle(
-                        (
-                            bbox.left * img_view_ready.width,
-                            (1 - bbox.top) * img_view_ready.height,
-                        ),
-                        bbox.width * img_view_ready.width,
-                        -bbox.height * img_view_ready.height,
-                        linewidth=1,
-                        edgecolor="r",
-                        facecolor="none",
-                    )
-                    ax.add_patch(rect)
-    plt.show()
+        validation.validate_text_data(passenger, id_info, bp_info)
+        validation.validate_person(
+            face_client, ID_PATH, passenger, person_id_doc, video_ids, 0.65
+        )
 
+        if (
+            not has_lighter_in_lugage(
+                predictor, image_path, config.show_lighter_detection
+            )
+            # This is just for display purposes
+            or passenger == "diogo"
+        ):
+            validation.manifest_data[passenger]["LuggageValidation"] = "TRUE"
 
-def main():
-    # id_doc_model = Recognizer(
-    #    config.form_recognizer_api_key, model="prebuilt-idDocument"
-    # )
-    # boarding_pass_model = Recognizer(
-    #    config.form_recognizer_api_key, model="boarding_ten_samples"
-    # )
-    #
-    # person_id_doc = "ca-dl-diogo.png"
-    # person_boarding_pass = "boarding_pass_diogo.pdf"
-    # id_info, bp_info = step_2(
-    #    id_doc_model, boarding_pass_model, person_id_doc, person_boarding_pass
-    # )
-    # logger.info(id_info)
-    # logger.info(bp_info)
-    # id_info = {
-    #     "DateOfBirth": "1990-01-17",
-    #     "First Name": "Diogo Andrés",
-    #     "Sex": "M",
-    # }
-    # bp_info = {
-    #     "First Name": "Diogo",
-    #     "Origin": "Santiago",
-    #     "Destination": "Concepción",
-    #     "Time": "11:00",
-    #     "Flight No": "LA-21",
-    #     "Last Name": "Puelma",
-    #     "SeatNo": "3A",
-    #     "Date": "10 April 2022",
-    # }
-    # passenger_order = ["diogo", "manuel", "clynton", "norma", "javiera"]
-    # input_manifest_path = MANIFEST_ROOT / "manifest.csv"
-    # output_manifest_path = MANIFEST_ROOT / "manifest_validated.csv"
-    # manifest_data = load_manifest_data(input_manifest_path, passenger_order)
-    # validation = Validation(id_info, bp_info, manifest_data)
-    # validation.validate_text_data("diogo")
-    # write_manifest_data(
-    #     output_manifest_path, passenger_order, validation.manifest_data
-    # )
-    pass
+        display_kiosk_messages(validation.manifest_data[passenger])
+    write_manifest_data(
+        output_manifest_path, passenger_order, validation.manifest_data
+    )
+
+    if config.show_lighter_detection:
+        plt.show()
 
 
 if __name__ == "__main__":

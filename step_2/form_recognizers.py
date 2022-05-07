@@ -40,9 +40,13 @@ class Recognizer:
         result = requests.post(url, json=data, headers=headers)
         try:
             result.raise_for_status()
-        except requests.HTTPError:
-            logger.error(result.content)
-            raise
+        except requests.HTTPError as e:
+            if config.is_free_tier:
+                logger.debug(f"{e}, will try to wait a minute")
+                time.sleep(60)
+                result = requests.post(url, json=data, headers=headers)
+            else:
+                raise
         return result.headers["Operation-location"]
 
     def result(self, operation_location: str):
@@ -53,12 +57,25 @@ class Recognizer:
         try:
             result.raise_for_status()
         except requests.HTTPError:
-            logger.error(result.content)
-            raise
+            if config.is_free_tier:
+                logger.debug(f"{e}, will try to wait a minute")
+                time.sleep(60)
+                result = requests.get(operation_location, headers=headers)
+            else:
+                raise
         result_data = result.json()
         while result_data["status"] != "succeeded":
             time.sleep(1)
-            result = requests.get(operation_location, headers=headers)
-            result.raise_for_status()
+            try:
+                result = requests.get(operation_location, headers=headers)
+                result.raise_for_status()
+            except Exception as e:
+                if config.is_free_tier:
+                    logger.debug(f"{e}, will try to wait a minute")
+                    time.sleep(60)
+                    result = requests.get(operation_location, headers=headers)
+                else:
+                    raise
+
             result_data = result.json()
         return result_data
