@@ -1,6 +1,5 @@
 import csv
 import datetime
-import logging
 from pathlib import Path
 import time
 from typing import Dict, List
@@ -462,7 +461,6 @@ def main():
         )
 
         validation.validate_text_data(passenger, id_info, bp_info)
-        return
         validation.validate_person(
             face_client, ID_PATH, passenger, person_id_doc, video_ids, 0.65
         )
